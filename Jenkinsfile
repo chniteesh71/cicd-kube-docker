@@ -1,12 +1,14 @@
+def COLOR_MAP = [
+    'SUCCESS': 'good',
+    'FAILURE': 'danger',
+]
 pipeline {
      agent any
      tools {
           maven "MAVEN3"
-         
-     } 
-
+          jdk "OracleJDK8"
+     }
      environment {
-                   
                     SONARSERVER = 'sonarserver'
                     SONARSCANNER = 'sonarscanner'
                     registry = 'chniteesh71/cicd-kube-docker'
@@ -67,43 +69,50 @@ pipeline {
             }
         }
 
- 
 
-        stage('Build App Image') {
-         steps {
-       
-         script {
-                dockerImage = docker.build( appRegistry + ":$BUILD_NUMBER", "./Docker-files/app/multistage/")
-             }
+        stage ('Build Docker app image') {
+          steps {
+            script {
+              dockerImage = docker.build( registry + ":V$BUILD_NUMBER" , ".")
+            }
 
-         }
-    
+          }
         }
 
-        stage('Upload App Image') {
-          steps{
+        stage ('upload image to docker hub') {
+          steps {
             script {
-              docker.withRegistry( vprofileRegistry, registryCredential ) {
-                dockerImage.push("$BUILD_NUMBER")
+              docker.withRegistry('',registryCredentials) {
+                dockerImage.push("V$BUILD_NUMBER")
                 dockerImage.push('latest')
+
               }
             }
           }
         }
-        
 
         stage('remove the unused docker images') {
           steps {
             sh "docker rmi $registry:V$BUILD_NUMBER"
           }
         }
-         	
+        
         stage ('Kubernetes deploy') {
           agent { label 'KOPS'}
           steps {
               sh "helm upgrade --install --force vprofile-stack helm/vprofilecharts --set appimage=${registry}:V${BUILD_NUMBER} --namespace prod"
           }
         }
-  
+
+
     }
+    post {
+        always {
+            echo 'Slack Notifications.'
+            slackSend channel: '#jenkinscicd',
+                color: COLOR_MAP[currentBuild.currentResult],
+                message: "*${currentBuild.currentResult}:* Job ${env.JOB_NAME} build ${env.BUILD_NUMBER} \n More info at: ${env.BUILD_URL}"
+        }
+    }
+    
 }
