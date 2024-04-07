@@ -15,11 +15,7 @@ pipeline {
 
     stages{
 
-        stage('Fetch Code') {
-            steps {
-                git branch: 'paac', url: 'https://github.com/devopshydclub/vprofile-project.git'
-            }
-        }
+
         stage('BUILD'){
             steps {
                 sh 'mvn clean install -DskipTests'
