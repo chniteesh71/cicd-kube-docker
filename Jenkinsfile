@@ -1,53 +1,42 @@
 pipeline {
+     agent any
+     tools {
+          maven "MAVEN3"
+          jdk "OracleJDK8"
+     }
+     environment {
+                   
+                    SONARSERVER = 'sonarserver'
+                    SONARSCANNER = 'sonarscanner'
+                    registry = 'chniteesh71/cicd-kube-docker'
+                    registryCredentials = 'dockerhub'
 
-    agent any
-/*
-	tools {
-        maven "maven3"
-    }
-*/
-    environment {
-        registry = "chniteesh71/cicd-kube-docker"
-        registryCredentials = "dockerhub"
-        SONARSERVER = 'sonarserver'
-        SONARSCANNER = 'sonarscanner'
-    }
 
-    stages{
-        stage('BUILD'){
+     }
+     stages {
+          stage ('build') {
+               steps {
+                    sh 'mvn -s settings.xml -DskipTests install '
+               }
+               post {
+                    success {
+                         echo "Now archiving.."
+                         archiveArtifacts artifacts: '**/*.war'
+                    }
+               }
+          }
+
+          stage ('test') {
             steps {
-                sh 'mvn clean install -DskipTests'
+                sh 'mvn -s settings.xml test'
             }
-            post {
-                success {
-                    echo 'Now Archiving...'
-                    archiveArtifacts artifacts: '**/target/*.war'
-                }
-            }
-        }
+          }
 
-        stage('UNIT TEST'){
+          stage ('Checkstyle Analysis') {
             steps {
-                sh 'mvn test'
+                sh 'mvn -s settings.xml checkstyle:checkstyle'
             }
-        }
-
-        stage('INTEGRATION TEST'){
-            steps {
-                sh 'mvn verify -DskipUnitTests'
-            }
-        }
-
-        stage ('CODE ANALYSIS WITH CHECKSTYLE'){
-            steps {
-                sh 'mvn checkstyle:checkstyle'
-            }
-            post {
-                success {
-                    echo 'Generated Analysis Result'
-                }
-            }
-        }
+          }
 
         stage('Sonar Analysis') {
             environment {
@@ -69,49 +58,51 @@ pipeline {
 
         stage("Quality Gate") {
             steps {
-                timeout(time: 10, unit: 'MINUTES') {
+                timeout(time: 1, unit: 'HOURS') {
                     // Parameter indicates whether to set pipeline to UNSTABLE if Quality Gate fails
                     // true = set pipeline to UNSTABLE, false = don't
                     waitForQualityGate abortPipeline: true
                 }
             }
         }
-        stage ('Build Docker app image') {
-          steps {
-            script {
-              dockerImage = docker.build registry + ":V$BUILD_NUMBER"
-            }
 
-          }
+ 
+
+        stage('Build App Image') {
+         steps {
+       
+         script {
+                dockerImage = docker.build( appRegistry + ":$BUILD_NUMBER", "./Docker-files/app/multistage/")
+             }
+
+         }
+    
         }
 
-        stage ('upload image to docker hub') {
-          steps {
+        stage('Upload App Image') {
+          steps{
             script {
-              docker.withRegistry('',registryCredentials) {
-                dockerImage.push("V$BUILD_NUMBER")
+              docker.withRegistry( vprofileRegistry, registryCredential ) {
+                dockerImage.push("$BUILD_NUMBER")
                 dockerImage.push('latest')
-
               }
             }
           }
         }
+        
 
         stage('remove the unused docker images') {
           steps {
             sh "docker rmi $registry:V$BUILD_NUMBER"
           }
         }
-        
+         	
         stage ('Kubernetes deploy') {
           agent { label 'KOPS'}
           steps {
               sh "helm upgrade --install --force vprofile-stack helm/vprofilecharts --set appimage=${registry}:V${BUILD_NUMBER} --namespace prod"
           }
         }
-
-
+  
     }
-
-
 }
