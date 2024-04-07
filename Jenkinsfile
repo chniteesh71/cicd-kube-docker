@@ -1,45 +1,59 @@
-def COLOR_MAP = [
-    'SUCCESS': 'good',
-    'FAILURE': 'danger',
-]
 pipeline {
-     agent any
-     tools {
-          maven "MAVEN3"
-          jdk "OracleJDK8"
-     }
-     environment {
+
+    agent any
+/*
+	tools {
+        maven "maven3"
+    }
+*/
+    environment {
                     SONARSERVER = 'sonarserver'
                     SONARSCANNER = 'sonarscanner'
                     registry = 'chniteesh71/cicd-kube-docker'
                     registryCredentials = 'dockerhub'
+    }
 
+    stages{
 
-     }
-     stages {
-          stage ('build') {
-               steps {
-                    sh 'mvn -s settings.xml -DskipTests install '
-               }
-               post {
-                    success {
-                         echo "Now archiving.."
-                         archiveArtifacts artifacts: '**/*.war'
-                    }
-               }
-          }
-
-          stage ('test') {
+        stage('Fetch Code') {
             steps {
-                sh 'mvn -s settings.xml test'
+                git branch: 'paac', url: 'https://github.com/devopshydclub/vprofile-project.git'
             }
-          }
-
-          stage ('Checkstyle Analysis') {
+        }
+        stage('BUILD'){
             steps {
-                sh 'mvn -s settings.xml checkstyle:checkstyle'
+                sh 'mvn clean install -DskipTests'
             }
-          }
+            post {
+                success {
+                    echo 'Now Archiving...'
+                    archiveArtifacts artifacts: '**/target/*.war'
+                }
+            }
+        }
+
+        stage('UNIT TEST'){
+            steps {
+                sh 'mvn test'
+            }
+        }
+
+        stage('INTEGRATION TEST'){
+            steps {
+                sh 'mvn verify -DskipUnitTests'
+            }
+        }
+
+        stage ('CODE ANALYSIS WITH CHECKSTYLE'){
+            steps {
+                sh 'mvn checkstyle:checkstyle'
+            }
+            post {
+                success {
+                    echo 'Generated Analysis Result'
+                }
+            }
+        }
 
         stage('Sonar Analysis') {
             environment {
@@ -70,7 +84,7 @@ pipeline {
         }
 
 
-        stage ('Build Docker app image') {
+          stage ('Build Docker app image') {
           steps {
             script {
               dockerImage = docker.build( registry + ":V$BUILD_NUMBER" , ".")
@@ -104,15 +118,7 @@ pipeline {
           }
         }
 
+    }
 
-    }
-    post {
-        always {
-            echo 'Slack Notifications.'
-            slackSend channel: '#jenkinscicd',
-                color: COLOR_MAP[currentBuild.currentResult],
-                message: "*${currentBuild.currentResult}:* Job ${env.JOB_NAME} build ${env.BUILD_NUMBER} \n More info at: ${env.BUILD_URL}"
-        }
-    }
-    
+
 }
