@@ -1,9 +1,10 @@
 pipeline {
      agent any
-     tools {
+    /* tools {
           maven "MAVEN3"
           jdk "OracleJDK8"
-     }
+     } 
+*/
      environment {
                    
                     SONARSERVER = 'sonarserver'
